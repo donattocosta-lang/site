@@ -1,0 +1,72 @@
+# =====================================================
+# DOCKER COMPOSE - PLATAFORMA REVENDA IPTV
+# =====================================================
+# Portas:
+#   - Backend: 3001 (túnel Cloudflare -> api.don-app.com)
+#   - Frontend: 8080 (túnel Cloudflare -> don-app.com)
+# =====================================================
+
+services:
+  # =====================================================
+  # BACKEND API (Node.js)
+  # =====================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: iptv-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN}
+      MP_PUBLIC_KEY: ${MP_PUBLIC_KEY}
+      FRONTEND_URL: https://don-app.com
+      BACKEND_URL: https://api.don-app.com
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - iptv-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =====================================================
+  # FRONTEND (React/Vite - Static via Nginx)
+  # =====================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: https://api.don-app.com
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_ANON_KEY}
+    container_name: iptv-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - iptv-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  iptv-network:
+    driver: bridge
+
+volumes:
+  backend-logs:
